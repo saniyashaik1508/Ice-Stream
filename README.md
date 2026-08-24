@@ -2,7 +2,7 @@
 
 > **Member 2 — Observability/UI Engineer (Week 1 Deliverable)**
 
-A high-performance, real-time data-lineage and observability dashboard built with **React**, **React Flow**, **TypeScript**, and **Tailwind CSS**. It visually represents the end-to-end lakehouse streaming architecture from ingestion to analytical serving with live operational health metrics.
+A high-performance, real-time data-lineage and observability dashboard built with **React**, **React Flow**, **TypeScript**, and **Tailwind CSS**. It visually represents the end-to-end lakehouse streaming architecture from ingestion to analytical serving with live operational health metrics and full **Dark / Light Theme** switching.
 
 ---
 
@@ -15,10 +15,11 @@ IceStream is a real-time data-quality and observability system for modern data l
 * **Where data is served**: Analytical Table layer (`Apache Iceberg`)
 * **Operational Health**: Instant status indicators (`HEALTHY`, `WARNING`, `ERROR`, `OFFLINE`)
 * **Real-time Throughput & Latency**: Dynamic event rates and stage traversal metrics
+* **Theme Support**: Seamless real-time toggle between high-contrast **Dark Mode** and crisp **Light Mode**
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│ IceStream                              ● SYSTEM OPERATIONAL │
+│ IceStream                       [Light/Dark]  ● OPERATIONAL │
 │ Real-Time Lakehouse Observability                          │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
@@ -49,7 +50,8 @@ IceStream is a real-time data-quality and observability system for modern data l
 
 * **Core**: React 18, TypeScript, Vite
 * **Lineage & Graph Visualization**: React Flow (`reactflow`)
-* **Styling**: Tailwind CSS, PostCSS, Autoprefixer
+* **Theme Management**: Custom `ThemeContext` with `localStorage` persistence
+* **Styling**: Tailwind CSS (class-based dark mode), PostCSS, Autoprefixer
 * **Icons**: Lucide React (`lucide-react`)
 * **Utility**: `clsx`, `tailwind-merge`
 
@@ -75,7 +77,7 @@ npm install
 npm run dev
 ```
 
-The application will start locally at `http://localhost:3000` (or the next available port indicated in your terminal).
+The application will start locally at `http://localhost:3000`.
 
 ### Production Build
 
@@ -91,11 +93,14 @@ npm run build
 frontend/
 ├── src/
 │   ├── components/
-│   │   ├── PipelineNode.tsx       # Custom React Flow node with tech badge, status, metrics
-│   │   ├── PipelineHeader.tsx     # Dashboard header with clock, system health, scenario controls
+│   │   ├── PipelineNode.tsx       # Custom React Flow node with theme support, badges & metrics
+│   │   ├── PipelineHeader.tsx     # Dashboard header with clock, scenario controls, and Dark/Light toggle
 │   │   ├── PipelineStats.tsx      # KPI cards (Events/sec, Health, Latency, Active Alerts)
 │   │   ├── StatusPanel.tsx        # Interactive stage details drawer on node click
 │   │   └── Legend.tsx             # Self-explanatory pipeline status legend
+│   │
+│   ├── context/
+│   │   └── ThemeContext.tsx       # Persistent Theme state ('dark' | 'light')
 │   │
 │   ├── data/
 │   │   └── pipelineData.ts        # Realistic baseline mock data & metric aggregators
@@ -107,11 +112,11 @@ frontend/
 │   │   └── pipeline.ts            # TypeScript interfaces & backend API contract types
 │   │
 │   ├── pages/
-│   │   └── Dashboard.tsx          # Main lineage view with React Flow canvas
+│   │   └── Dashboard.tsx          # Main lineage view with adaptive React Flow canvas
 │   │
-│   ├── App.tsx                    # Root application component
+│   ├── App.tsx                    # Root application component wrapped with ThemeProvider
 │   ├── main.tsx                   # React DOM render entry
-│   └── index.css                  # Tailwind styles and canvas animations
+│   └── index.css                  # Tailwind styles, theme transitions and canvas animations
 │
 ├── package.json
 ├── vite.config.ts
@@ -121,39 +126,17 @@ frontend/
 
 ---
 
-## 5. Custom Pipeline Node
+## 5. Theme Switching Feature
 
-Each node (`PipelineNode.tsx`) displays:
-
-1. **Stage Title**: `INGEST`, `PROCESS`, `SERVE`
-2. **Technology**: `Apache Kafka`, `Apache Flink`, `Apache Iceberg`
-3. **Description**: Concise workload summary
-4. **Status Indicator**: Accessible dot + text pill (`● HEALTHY`, `● WARNING`, `● ERROR`, `● OFFLINE`)
-5. **Real-Time Metrics**:
-   * `Events/sec` (e.g., `2,450`)
-   * `Latency` (e.g., `120 ms`)
-6. **Selection State**: Glowing ring highlight when clicked
+* **Persistent**: User selection (`dark` or `light`) is saved in browser `localStorage`.
+* **Adaptive Graph**: In addition to standard HTML UI components, the **React Flow Canvas** dynamically changes its dot grid color, edge stroke/labels, minimap mask, and controls styling according to the active theme.
+* **Smooth Transitions**: Smooth CSS color transitions ensure a pleasant user experience when toggling.
 
 ---
 
-## 6. Mock Data & Simulation Engine
+## 6. Future Backend Integration Contract
 
-Mock data is completely decoupled in [`src/data/pipelineData.ts`](src/data/pipelineData.ts) and managed via [`src/hooks/usePipelineSimulation.ts`](src/hooks/usePipelineSimulation.ts):
-
-* **Realistic Baseline**: Ingest (Kafka 2,450 evt/s) → Process (Flink 2,380 evt/s) → Serve (Iceberg 2,310 evt/s).
-* **Metric Jitter**: Applies subtle realistic fluctuations (±1.5%) every few seconds.
-* **Scenario Controls**: Interactive presets in the header to simulate:
-  1. *Healthy (100%)*
-  2. *Ingest Kafka Lag* (Warning)
-  3. *Flink Backpressure* (Warning)
-  4. *Iceberg Commit Delay* (Error)
-* **Play / Pause / Refresh**: Controllable simulation without spurious random failures.
-
----
-
-## 7. Future Backend Integration Contract
-
-The UI is strictly isolated from Kafka / Flink / Python backend dependencies, but is pre-configured to bind directly to a REST API endpoint like `GET /api/pipeline/status`:
+The UI is isolated from Kafka / Flink / Python backend dependencies, but is pre-configured to bind directly to a REST API endpoint like `GET /api/pipeline/status`:
 
 ```json
 {

@@ -17,6 +17,7 @@ import { PipelineStats } from '../components/PipelineStats';
 import { StatusPanel } from '../components/StatusPanel';
 import { Legend } from '../components/Legend';
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
+import { useTheme } from '../context/ThemeContext';
 import { PipelineNodeData } from '../types/pipeline';
 import { Layers } from 'lucide-react';
 
@@ -25,6 +26,7 @@ const nodeTypes = {
 };
 
 export const Dashboard: React.FC = () => {
+  const { theme } = useTheme();
   const {
     stages,
     summary,
@@ -38,6 +40,8 @@ export const Dashboard: React.FC = () => {
     setScenario,
     resetStages,
   } = usePipelineSimulation();
+
+  const isDark = theme === 'dark';
 
   // Define layout positions for the horizontal lineage graph
   const nodes: Node<PipelineNodeData>[] = useMemo(() => {
@@ -63,10 +67,14 @@ export const Dashboard: React.FC = () => {
     const serveStage = stages.find(s => s.id === 'serve');
 
     const getEdgeColor = (sourceStatus?: string, targetStatus?: string) => {
-      if (sourceStatus === 'error' || targetStatus === 'error') return '#f43f5e';
-      if (sourceStatus === 'warning' || targetStatus === 'warning') return '#f59e0b';
-      return '#38bdf8';
+      if (sourceStatus === 'error' || targetStatus === 'error') return isDark ? '#f43f5e' : '#e11d48';
+      if (sourceStatus === 'warning' || targetStatus === 'warning') return isDark ? '#f59e0b' : '#d97706';
+      return isDark ? '#38bdf8' : '#0284c7';
     };
+
+    const labelBgFill = isDark ? '#0f172a' : '#ffffff';
+    const labelStroke = isDark ? '#334155' : '#cbd5e1';
+    const labelTextFill = isDark ? '#94a3b8' : '#475569';
 
     return [
       {
@@ -77,15 +85,15 @@ export const Dashboard: React.FC = () => {
         type: 'smoothstep',
         label: 'Raw Stream (Avro / JSON)',
         labelStyle: {
-          fill: '#94a3b8',
+          fill: labelTextFill,
           fontWeight: 600,
           fontSize: 11,
           fontFamily: 'monospace',
         },
         labelBgStyle: {
-          fill: '#0f172a',
-          fillOpacity: 0.9,
-          stroke: '#334155',
+          fill: labelBgFill,
+          fillOpacity: 0.95,
+          stroke: labelStroke,
           strokeWidth: 1,
           rx: 6,
           ry: 6,
@@ -110,15 +118,15 @@ export const Dashboard: React.FC = () => {
         type: 'smoothstep',
         label: 'Data Quality & Clean Parquet',
         labelStyle: {
-          fill: '#94a3b8',
+          fill: labelTextFill,
           fontWeight: 600,
           fontSize: 11,
           fontFamily: 'monospace',
         },
         labelBgStyle: {
-          fill: '#0f172a',
-          fillOpacity: 0.9,
-          stroke: '#334155',
+          fill: labelBgFill,
+          fillOpacity: 0.95,
+          stroke: labelStroke,
           strokeWidth: 1,
           rx: 6,
           ry: 6,
@@ -136,7 +144,7 @@ export const Dashboard: React.FC = () => {
         },
       },
     ];
-  }, [stages, isLive]);
+  }, [stages, isLive, isDark]);
 
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
     setSelectedStageId(node.id as any);
@@ -147,7 +155,7 @@ export const Dashboard: React.FC = () => {
   }, [setSelectedStageId]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-background text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
       {/* Top Header */}
       <PipelineHeader
         systemStatus={summary.systemStatus}
@@ -167,35 +175,35 @@ export const Dashboard: React.FC = () => {
         <PipelineStats summary={summary} />
 
         {/* Lineage Graph Section */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-md flex flex-col gap-3">
+        <div className="bg-white/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm dark:shadow-xl backdrop-blur-md flex flex-col gap-3 transition-colors">
           
           {/* Canvas Top Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800 px-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800 px-2">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <div className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20">
                 <Layers className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white font-sans flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white font-sans flex items-center gap-2">
                   DATA LINEAGE ARCHITECTURE
-                  <span className="text-[10px] font-mono font-normal text-slate-400">
+                  <span className="text-[10px] font-mono font-normal text-slate-500 dark:text-slate-400">
                     (Interactive React Flow Canvas)
                   </span>
                 </h2>
-                <p className="text-[11px] text-slate-400 font-mono">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   E-Commerce Generator → INGEST (Kafka) → PROCESS (Flink) → SERVE (Iceberg)
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-              <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono">
+              <span className="inline-block w-2 h-2 rounded-full bg-sky-500 dark:bg-sky-400 animate-ping" />
               <span>Select any stage to inspect real-time metrics & metadata</span>
             </div>
           </div>
 
           {/* React Flow Viewport Container */}
-          <div className="h-[430px] w-full rounded-xl overflow-hidden border border-slate-800/80 bg-slate-950 relative">
+          <div className="h-[430px] w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800/80 bg-slate-100/70 dark:bg-slate-950 relative transition-colors">
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -214,11 +222,11 @@ export const Dashboard: React.FC = () => {
                 variant={BackgroundVariant.Dots}
                 gap={20}
                 size={1.5}
-                color="#334155"
+                color={isDark ? '#334155' : '#cbd5e1'}
               />
 
               {/* Canvas Controls */}
-              <Controls className="!bg-slate-900 !border-slate-800 !text-slate-300 !fill-slate-300 [&>button]:!bg-slate-900 [&>button]:!border-slate-800 [&>button]:!fill-slate-300 [&>button:hover]:!bg-slate-800" />
+              <Controls className="!bg-white dark:!bg-slate-900 !border-slate-200 dark:!border-slate-800 !text-slate-700 dark:!text-slate-300 !fill-slate-700 dark:!fill-slate-300" />
 
               {/* Minimap */}
               <MiniMap
@@ -227,20 +235,20 @@ export const Dashboard: React.FC = () => {
                   if (n.data?.status === 'warning') return '#f59e0b';
                   return '#0ea5e9';
                 }}
-                maskColor="rgba(15, 23, 42, 0.75)"
-                className="!bg-slate-900/90 !border-slate-800 !rounded-lg overflow-hidden !shadow-lg hidden md:block"
+                maskColor={isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(241, 245, 249, 0.75)'}
+                className="!bg-white/90 dark:!bg-slate-900/90 !border-slate-200 dark:!border-slate-800 !rounded-lg overflow-hidden !shadow-md dark:!shadow-lg hidden md:block"
               />
             </ReactFlow>
 
             {/* Ingress Stream Tag badge */}
-            <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur border border-slate-800 text-slate-300 text-[11px] font-mono px-2.5 py-1 rounded-md shadow flex items-center gap-1.5 pointer-events-none">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+            <div className="absolute top-3 left-3 bg-white/90 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-mono px-2.5 py-1 rounded-md shadow-sm flex items-center gap-1.5 pointer-events-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-500 dark:bg-sky-400" />
               Source: E-Commerce Transaction Stream
             </div>
 
             {/* Egress Lakehouse Analytics Tag badge */}
-            <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur border border-slate-800 text-slate-300 text-[11px] font-mono px-2.5 py-1 rounded-md shadow flex items-center gap-1.5 pointer-events-none">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <div className="absolute bottom-3 right-3 bg-white/90 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-mono px-2.5 py-1 rounded-md shadow-sm flex items-center gap-1.5 pointer-events-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
               Sink: Lakehouse Table Storage & Analytics
             </div>
           </div>
@@ -260,7 +268,7 @@ export const Dashboard: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/60 py-4 px-4 text-center text-xs font-mono text-slate-400 mt-auto">
+      <footer className="border-t border-slate-200 dark:border-slate-800/80 bg-white/60 dark:bg-slate-950/60 py-4 px-4 text-center text-xs font-mono text-slate-500 dark:text-slate-400 mt-auto transition-colors">
         <p>
           IceStream Real-Time Lakehouse Observability • Member 2 Week 1 UI Deliverable
         </p>
