@@ -11,10 +11,14 @@ import {
   AlertTriangle, 
   AlertOctagon, 
   MinusCircle,
-  Layers
+  Layers,
+  ShieldX,
 } from 'lucide-react';
 
-export const getStatusConfig = (status: PipelineStatus) => {
+/** Extended status string — supports both Week 1 ('error') and Week 2 ('critical', 'quarantined', 'degraded') */
+type ExtendedStatus = PipelineStatus | 'critical' | 'quarantined' | 'degraded';
+
+export const getStatusConfig = (status: ExtendedStatus) => {
   switch (status) {
     case 'healthy':
       return {
@@ -38,9 +42,11 @@ export const getStatusConfig = (status: PipelineStatus) => {
         selectedBorder: 'ring-2 ring-amber-500 dark:ring-amber-400 border-amber-500 dark:border-amber-400',
         icon: AlertTriangle,
       };
+    // 'error' kept for Week 1 backward compatibility — renders as CRITICAL visually
     case 'error':
+    case 'critical':
       return {
-        label: 'ERROR',
+        label: 'CRITICAL',
         color: 'text-rose-600 dark:text-rose-400',
         dotColor: 'bg-rose-500 dark:bg-rose-400',
         bgPill: 'bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-400',
@@ -49,7 +55,30 @@ export const getStatusConfig = (status: PipelineStatus) => {
         selectedBorder: 'ring-2 ring-rose-500 dark:ring-rose-400 border-rose-500 dark:border-rose-400',
         icon: AlertOctagon,
       };
+    case 'quarantined':
+      return {
+        label: 'QUARANTINED',
+        color: 'text-fuchsia-600 dark:text-fuchsia-400',
+        dotColor: 'bg-fuchsia-500 dark:bg-fuchsia-400',
+        bgPill: 'bg-fuchsia-50 dark:bg-fuchsia-500/10 border-fuchsia-200 dark:border-fuchsia-500/30 text-fuchsia-700 dark:text-fuchsia-400',
+        borderColor: 'border-fuchsia-400/60 dark:border-fuchsia-500/50 hover:border-fuchsia-500 dark:hover:border-fuchsia-400',
+        glowColor: 'shadow-fuchsia-500/25',
+        selectedBorder: 'ring-2 ring-fuchsia-500 dark:ring-fuchsia-400 border-fuchsia-500 dark:border-fuchsia-400',
+        icon: ShieldX,
+      };
+    case 'degraded':
+      return {
+        label: 'DEGRADED',
+        color: 'text-orange-600 dark:text-orange-400',
+        dotColor: 'bg-orange-500 dark:bg-orange-400',
+        bgPill: 'bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/30 text-orange-700 dark:text-orange-400',
+        borderColor: 'border-orange-400/50 dark:border-orange-500/50 hover:border-orange-500 dark:hover:border-orange-400',
+        glowColor: 'shadow-orange-500/20',
+        selectedBorder: 'ring-2 ring-orange-500 dark:ring-orange-400 border-orange-500 dark:border-orange-400',
+        icon: AlertTriangle,
+      };
     case 'offline':
+    default:
       return {
         label: 'OFFLINE',
         color: 'text-slate-600 dark:text-slate-400',
