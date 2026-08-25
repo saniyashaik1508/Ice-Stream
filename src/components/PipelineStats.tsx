@@ -5,18 +5,27 @@ import {
   ShieldCheck, 
   Clock, 
   AlertCircle, 
-  TrendingUp
+  TrendingUp,
+  AlertOctagon,
+  ShieldX,
 } from 'lucide-react';
 
 interface PipelineStatsProps {
   summary: PipelineSummaryMetrics;
+  /** Week 2 additions — optional to keep backward compatibility */
+  criticalAlertCount?: number;
+  quarantinedNodeCount?: number;
 }
 
-export const PipelineStats: React.FC<PipelineStatsProps> = ({ summary }) => {
+export const PipelineStats: React.FC<PipelineStatsProps> = ({
+  summary,
+  criticalAlertCount = 0,
+  quarantinedNodeCount = 0,
+}) => {
   const isAllHealthy = summary.healthyStages === summary.totalStages;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4">
       {/* Card 1: Total Events/sec */}
       <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm dark:shadow-md backdrop-blur-sm relative overflow-hidden group hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
         <div className="flex items-center justify-between">
@@ -119,12 +128,78 @@ export const PipelineStats: React.FC<PipelineStatsProps> = ({ summary }) => {
           </span>
         </div>
         <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-          Data quality & lag warnings
+          Data quality &amp; lag warnings
         </p>
         <div className={`absolute bottom-0 left-0 right-0 h-0.5 opacity-60 group-hover:opacity-100 transition-opacity ${
           summary.activeAlertCount === 0 ? 'bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700' : 'bg-gradient-to-r from-rose-500 to-amber-500'
         }`} />
       </div>
+
+      {/* Card 5: Critical Alerts (Week 2) */}
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm dark:shadow-md backdrop-blur-sm relative overflow-hidden group hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-mono font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            Critical Alerts
+          </span>
+          <div className={`p-2 rounded-lg border ${
+            criticalAlertCount === 0
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+              : 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-500/20'
+          }`}>
+            <AlertOctagon className="w-4 h-4" />
+          </div>
+        </div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className={`text-2xl font-mono font-bold tracking-tight ${
+            criticalAlertCount === 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'
+          }`}>
+            {criticalAlertCount}
+          </span>
+          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            {criticalAlertCount === 0 ? 'clear' : 'critical'}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+          Immediate action needed
+        </p>
+        <div className={`absolute bottom-0 left-0 right-0 h-0.5 opacity-60 group-hover:opacity-100 transition-opacity ${
+          criticalAlertCount === 0 ? 'bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700' : 'bg-gradient-to-r from-rose-600 to-rose-400'
+        }`} />
+      </div>
+
+      {/* Card 6: Quarantined Nodes (Week 2) */}
+      <div className="bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm dark:shadow-md backdrop-blur-sm relative overflow-hidden group hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-200">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-mono font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            Quarantined
+          </span>
+          <div className={`p-2 rounded-lg border ${
+            quarantinedNodeCount === 0
+              ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+              : 'bg-fuchsia-50 dark:bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-200 dark:border-fuchsia-500/20'
+          }`}>
+            <ShieldX className="w-4 h-4" />
+          </div>
+        </div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className={`text-2xl font-mono font-bold tracking-tight ${
+            quarantinedNodeCount === 0 ? 'text-slate-900 dark:text-white' : 'text-fuchsia-600 dark:text-fuchsia-400'
+          }`}>
+            {quarantinedNodeCount}
+          </span>
+          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            {quarantinedNodeCount === 0 ? 'none' : 'nodes'}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+          Paused pipeline stages
+        </p>
+        <div className={`absolute bottom-0 left-0 right-0 h-0.5 opacity-60 group-hover:opacity-100 transition-opacity ${
+          quarantinedNodeCount === 0 ? 'bg-gradient-to-r from-slate-300 to-slate-400 dark:from-slate-600 dark:to-slate-700' : 'bg-gradient-to-r from-fuchsia-500 to-purple-500'
+        }`} />
+      </div>
     </div>
   );
 };
+
+
