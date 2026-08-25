@@ -92,6 +92,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-{
-  "discount_code": "SALE20"
-}
+    
