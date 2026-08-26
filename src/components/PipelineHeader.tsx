@@ -82,9 +82,7 @@ export const PipelineHeader: React.FC<PipelineHeaderProps> = ({
               <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white font-sans">
                 IceStream
               </h1>
-              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                Week 1 Observability
-              </span>
+
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
               Real-Time Lakehouse Observability & Data Lineage
