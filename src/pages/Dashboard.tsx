@@ -22,6 +22,7 @@ import ReactFlow, {
   MiniMap,
   Node,
   Edge,
+  EdgeTypes,
   MarkerType,
   BackgroundVariant,
   NodeMouseHandler,
@@ -29,6 +30,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { PipelineNode } from '../components/PipelineNode';
+import { FlowEdge } from '../components/FlowEdge';
 import { PipelineHeader } from '../components/PipelineHeader';
 import { PipelineStats } from '../components/PipelineStats';
 import { StatusPanel } from '../components/StatusPanel';
@@ -50,6 +52,10 @@ import { Layers } from 'lucide-react';
 
 const nodeTypes = {
   pipelineNode: PipelineNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  flowEdge: FlowEdge,
 };
 
 export const Dashboard: React.FC = () => {
@@ -98,8 +104,9 @@ export const Dashboard: React.FC = () => {
   // ── ReactFlow nodes — mark quarantined nodes from obs state ───────────────
   const nodes: Node<PipelineNodeData>[] = useMemo(() => {
     return stages.map((stage, idx) => {
-      const xPos = 40 + idx * 360;
-      const yPos = 120;
+      const xPos = 40 + idx * 480;
+      const yPos = 80;
+
       const isQuarantined = obs.quarantinedNodes.includes(stage.id);
 
       return {
@@ -145,7 +152,12 @@ export const Dashboard: React.FC = () => {
         source: 'ingest',
         target: 'process',
         animated: isLive && !processQuarantined,
-        type: 'smoothstep',
+        type: 'flowEdge',
+        data: {
+          label: 'Raw Stream (Avro / JSON)',
+          blocked: false,
+          isDark,
+        },
         style: { stroke: ingestProcessColor, strokeWidth: 2.5 },
         markerEnd: { type: MarkerType.ArrowClosed, color: ingestProcessColor, width: 18, height: 18 },
       },
@@ -154,15 +166,12 @@ export const Dashboard: React.FC = () => {
         source: 'process',
         target: 'serve',
         animated: isLive && !processQuarantined,
-        type: 'smoothstep',
-        label: processQuarantined ? '⛔ BLOCKED' : undefined,
-        labelStyle: processQuarantined
-          ? { fill: isDark ? '#f0abfc' : '#a21caf', fontWeight: 700, fontSize: 11, fontFamily: 'monospace' }
-          : undefined,
-        labelBgStyle: processQuarantined
-          ? { fill: isDark ? '#4a044e' : '#fdf4ff', fillOpacity: 1, stroke: isDark ? '#a855f7' : '#c026d3', strokeWidth: 1.5, rx: 6, ry: 6 }
-          : undefined,
-        labelBgPadding: processQuarantined ? [8, 4] as [number, number] : undefined,
+        type: 'flowEdge',
+        data: {
+          label: processQuarantined ? 'BLOCKED — Quarantined' : 'Data Quality & Clean Parquet',
+          blocked: processQuarantined,
+          isDark,
+        },
         style: {
           stroke: processServeColor,
           strokeWidth: processQuarantined ? 2 : 2.5,
@@ -255,13 +264,13 @@ export const Dashboard: React.FC = () => {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               fitView
               fitViewOptions={{ padding: 0.25 }}
               minZoom={0.5}
               maxZoom={1.5}
-              defaultEdgeOptions={{ type: 'smoothstep' }}
               proOptions={{ hideAttribution: true }}
             >
               <Background
