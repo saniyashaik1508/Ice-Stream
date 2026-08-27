@@ -136,9 +136,8 @@ export const Dashboard: React.FC = () => {
       ? isDark ? '#f43f5e' : '#e11d48'
       : getEdgeColor(processStage?.status, serveStage?.status);
 
-    const labelBgFill = isDark ? '#0f172a' : '#ffffff';
-    const labelStroke = isDark ? '#334155' : '#cbd5e1';
-    const labelTextFill = isDark ? '#94a3b8' : '#475569';
+
+
 
     return [
       {
@@ -147,10 +146,6 @@ export const Dashboard: React.FC = () => {
         target: 'process',
         animated: isLive && !processQuarantined,
         type: 'smoothstep',
-        label: 'Raw Stream (Avro / JSON)',
-        labelStyle: { fill: labelTextFill, fontWeight: 600, fontSize: 11, fontFamily: 'monospace' },
-        labelBgStyle: { fill: labelBgFill, fillOpacity: 0.95, stroke: labelStroke, strokeWidth: 1, rx: 6, ry: 6 },
-        labelBgPadding: [8, 4] as [number, number],
         style: { stroke: ingestProcessColor, strokeWidth: 2.5 },
         markerEnd: { type: MarkerType.ArrowClosed, color: ingestProcessColor, width: 18, height: 18 },
       },
@@ -160,25 +155,14 @@ export const Dashboard: React.FC = () => {
         target: 'serve',
         animated: isLive && !processQuarantined,
         type: 'smoothstep',
-        // Show X label when quarantined — blocked flow
-        label: processQuarantined
-          ? '⛔ BLOCKED — Quarantined'
-          : 'Data Quality & Clean Parquet',
-        labelStyle: {
-          fill: processQuarantined ? (isDark ? '#f0abfc' : '#a21caf') : labelTextFill,
-          fontWeight: 700,
-          fontSize: 11,
-          fontFamily: 'monospace',
-        },
-        labelBgStyle: {
-          fill: processQuarantined ? (isDark ? '#4a044e' : '#fdf4ff') : labelBgFill,
-          fillOpacity: 0.95,
-          stroke: processQuarantined ? (isDark ? '#a855f7' : '#c026d3') : labelStroke,
-          strokeWidth: 1.5,
-          rx: 6,
-          ry: 6,
-        },
-        labelBgPadding: [8, 4] as [number, number],
+        label: processQuarantined ? '⛔ BLOCKED' : undefined,
+        labelStyle: processQuarantined
+          ? { fill: isDark ? '#f0abfc' : '#a21caf', fontWeight: 700, fontSize: 11, fontFamily: 'monospace' }
+          : undefined,
+        labelBgStyle: processQuarantined
+          ? { fill: isDark ? '#4a044e' : '#fdf4ff', fillOpacity: 1, stroke: isDark ? '#a855f7' : '#c026d3', strokeWidth: 1.5, rx: 6, ry: 6 }
+          : undefined,
+        labelBgPadding: processQuarantined ? [8, 4] as [number, number] : undefined,
         style: {
           stroke: processServeColor,
           strokeWidth: processQuarantined ? 2 : 2.5,
@@ -285,6 +269,7 @@ export const Dashboard: React.FC = () => {
                 gap={20}
                 size={1.5}
                 color={isDark ? '#334155' : '#cbd5e1'}
+                style={{ border: 'none', outline: 'none' }}
               />
               <Controls className="!bg-white dark:!bg-slate-900 !border-slate-200 dark:!border-slate-800 !text-slate-700 dark:!text-slate-300 !fill-slate-700 dark:!fill-slate-300" />
               <MiniMap
@@ -295,6 +280,8 @@ export const Dashboard: React.FC = () => {
                   return '#0ea5e9';
                 }}
                 maskColor={isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(241, 245, 249, 0.75)'}
+                position="top-right"
+                style={{ width: 120, height: 80 }}
                 className="!bg-white/90 dark:!bg-slate-900/90 !border-slate-200 dark:!border-slate-800 !rounded-lg overflow-hidden !shadow-md dark:!shadow-lg hidden md:block"
               />
             </ReactFlow>
