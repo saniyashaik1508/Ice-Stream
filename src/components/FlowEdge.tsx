@@ -43,14 +43,18 @@ export const FlowEdge = memo(({
   const blocked = data?.blocked ?? false;
   const isDark = data?.isDark ?? false;
 
+  // Animated class applied via CSS on the path element id
+  const pathStyle = animated
+    ? { ...style, strokeDasharray: style?.strokeDasharray ?? "6", animation: "flowEdge 0.8s linear infinite" }
+    : style;
+
   return (
     <>
       <BaseEdge
         id={id}
         path={edgePath}
-        style={style}
+        style={pathStyle}
         markerEnd={markerEnd}
-        className={animated ? "animated" : ""}
       />
 
       {label && (

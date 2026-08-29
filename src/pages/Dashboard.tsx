@@ -41,6 +41,7 @@ import { AlertDetail } from '../components/AlertDetail';
 import { AlertHistory } from '../components/AlertHistory';
 import { AutomationStatus } from '../components/AutomationStatus';
 import { PipelineHealthBanner } from '../components/PipelineHealthBanner';
+import { DetectionCheck } from '../components/DetectionCheck';
 
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
 import { useObservability } from '../hooks/useObservability';
@@ -228,6 +229,12 @@ export const Dashboard: React.FC = () => {
         <IncidentSimulator
           activeScenario={obs.activeScenario}
           onSelectScenario={handleSelectScenario}
+        />
+
+        {/* ── Detection Check — fires immediately on bad-data injection ── */}
+        <DetectionCheck
+          event={obs.detectionEvent}
+          onDismiss={obs.dismissDetection}
         />
 
         {/* ── Lineage Graph Section (Week 1 — preserved) ── */}
