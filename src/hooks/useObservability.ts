@@ -22,6 +22,7 @@ import {
   IncidentPreset,
   PipelineOperationalState,
   AutomationStep,
+  DetectionEvent,
 } from '../types/observability';
 import {
   incidentPresets,
@@ -103,6 +104,7 @@ export function useObservability() {
   const [state, setState] = useState<ObservabilityState>(initialState);
   const [activeScenario, setActiveScenario] = useState<IncidentScenario>('healthy');
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [detectionEvent, setDetectionEvent] = useState<DetectionEvent | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Polling tick ────────────────────────────────────────────────────────
@@ -127,6 +129,7 @@ export function useObservability() {
     setActiveScenario(scenario);
 
     if (scenario === 'healthy') {
+      setDetectionEvent(null);
       setState(prev => ({
         ...prev,
         pipelineState: 'operational',
@@ -164,6 +167,28 @@ export function useObservability() {
     const quarantined = preset.severity === 'critical' ? [preset.affectedNodeId] : [];
     const pipelineState = derivePipelineState(scenario, quarantined);
     const automationSteps = deriveAutomationSteps(scenario, quarantined);
+
+    // ── Emit DetectionEvent immediately ──────────────────────────────────
+    const injectedAt = nowTime();
+    const detectionLatencyMs = 180 + Math.floor(Math.random() * 170); // 180–350ms realistic range
+    const detectedAt = nowTime(); // same tick — detection is near-instant
+    const alertRaisedAt = nowTime();
+
+    const detection: DetectionEvent = {
+      scenario,
+      ruleName: preset.label,
+      detectedAtStage: preset.affectedNodeId,
+      severity: preset.severity,
+      column: preset.column,
+      expectedValue: String(preset.expectedValue ?? '—'),
+      actualValue: String(preset.actualValue ?? '—'),
+      threshold: String(preset.threshold ?? '—'),
+      injectedAt,
+      detectedAt,
+      alertRaisedAt,
+      detectionLatencyMs,
+    };
+    setDetectionEvent(detection);
 
     setState(prev => ({
       ...prev,
@@ -277,6 +302,8 @@ export function useObservability() {
   const criticalAlerts = activeAlerts.filter(a => a.anomaly.severity === 'critical');
   const selectedAlert = state.alerts.find(a => a.id === selectedAlertId) ?? null;
 
+  const dismissDetection = useCallback(() => setDetectionEvent(null), []);
+
   return {
     // State
     ...state,
@@ -285,6 +312,7 @@ export function useObservability() {
     criticalAlerts,
     selectedAlert,
     selectedAlertId,
+    detectionEvent,
 
     // Actions
     applyScenario,
@@ -294,5 +322,6 @@ export function useObservability() {
     recoverNode,
     retry,
     setSelectedAlertId,
+    dismissDetection,
   };
 }

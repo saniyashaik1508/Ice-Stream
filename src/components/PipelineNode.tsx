@@ -111,7 +111,7 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
 
   return (
     <div
-      className={`relative min-w-[270px] max-w-[290px] rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border p-4 transition-all duration-200 shadow-md dark:shadow-xl ${
+      className={`relative min-w-[270px] max-w-[290px] rounded-xl bg-white dark:bg-slate-900 border p-4 transition-all duration-200 shadow-md dark:shadow-xl ${
         selected ? statusCfg.selectedBorder : statusCfg.borderColor
       } ${statusCfg.glowColor}`}
     >

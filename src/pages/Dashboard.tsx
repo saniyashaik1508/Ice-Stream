@@ -22,6 +22,7 @@ import ReactFlow, {
   MiniMap,
   Node,
   Edge,
+  EdgeTypes,
   MarkerType,
   BackgroundVariant,
   NodeMouseHandler,
@@ -29,6 +30,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import { PipelineNode } from '../components/PipelineNode';
+import { FlowEdge } from '../components/FlowEdge';
 import { PipelineHeader } from '../components/PipelineHeader';
 import { PipelineStats } from '../components/PipelineStats';
 import { StatusPanel } from '../components/StatusPanel';
@@ -39,6 +41,7 @@ import { AlertDetail } from '../components/AlertDetail';
 import { AlertHistory } from '../components/AlertHistory';
 import { AutomationStatus } from '../components/AutomationStatus';
 import { PipelineHealthBanner } from '../components/PipelineHealthBanner';
+import { DetectionCheck } from '../components/DetectionCheck';
 
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
 import { useObservability } from '../hooks/useObservability';
@@ -50,6 +53,10 @@ import { Layers } from 'lucide-react';
 
 const nodeTypes = {
   pipelineNode: PipelineNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  flowEdge: FlowEdge,
 };
 
 export const Dashboard: React.FC = () => {
@@ -98,8 +105,9 @@ export const Dashboard: React.FC = () => {
   // ── ReactFlow nodes — mark quarantined nodes from obs state ───────────────
   const nodes: Node<PipelineNodeData>[] = useMemo(() => {
     return stages.map((stage, idx) => {
-      const xPos = 40 + idx * 360;
-      const yPos = 120;
+      const xPos = 40 + idx * 480;
+      const yPos = 80;
+
       const isQuarantined = obs.quarantinedNodes.includes(stage.id);
 
       return {
@@ -136,9 +144,8 @@ export const Dashboard: React.FC = () => {
       ? isDark ? '#f43f5e' : '#e11d48'
       : getEdgeColor(processStage?.status, serveStage?.status);
 
-    const labelBgFill = isDark ? '#0f172a' : '#ffffff';
-    const labelStroke = isDark ? '#334155' : '#cbd5e1';
-    const labelTextFill = isDark ? '#94a3b8' : '#475569';
+
+
 
     return [
       {
@@ -146,11 +153,12 @@ export const Dashboard: React.FC = () => {
         source: 'ingest',
         target: 'process',
         animated: isLive && !processQuarantined,
-        type: 'smoothstep',
-        label: 'Raw Stream (Avro / JSON)',
-        labelStyle: { fill: labelTextFill, fontWeight: 600, fontSize: 11, fontFamily: 'monospace' },
-        labelBgStyle: { fill: labelBgFill, fillOpacity: 0.95, stroke: labelStroke, strokeWidth: 1, rx: 6, ry: 6 },
-        labelBgPadding: [8, 4] as [number, number],
+        type: 'flowEdge',
+        data: {
+          label: 'Raw Stream (Avro / JSON)',
+          blocked: false,
+          isDark,
+        },
         style: { stroke: ingestProcessColor, strokeWidth: 2.5 },
         markerEnd: { type: MarkerType.ArrowClosed, color: ingestProcessColor, width: 18, height: 18 },
       },
@@ -159,26 +167,12 @@ export const Dashboard: React.FC = () => {
         source: 'process',
         target: 'serve',
         animated: isLive && !processQuarantined,
-        type: 'smoothstep',
-        // Show X label when quarantined — blocked flow
-        label: processQuarantined
-          ? '⛔ BLOCKED — Quarantined'
-          : 'Data Quality & Clean Parquet',
-        labelStyle: {
-          fill: processQuarantined ? (isDark ? '#f0abfc' : '#a21caf') : labelTextFill,
-          fontWeight: 700,
-          fontSize: 11,
-          fontFamily: 'monospace',
+        type: 'flowEdge',
+        data: {
+          label: processQuarantined ? 'BLOCKED — Quarantined' : 'Data Quality & Clean Parquet',
+          blocked: processQuarantined,
+          isDark,
         },
-        labelBgStyle: {
-          fill: processQuarantined ? (isDark ? '#4a044e' : '#fdf4ff') : labelBgFill,
-          fillOpacity: 0.95,
-          stroke: processQuarantined ? (isDark ? '#a855f7' : '#c026d3') : labelStroke,
-          strokeWidth: 1.5,
-          rx: 6,
-          ry: 6,
-        },
-        labelBgPadding: [8, 4] as [number, number],
         style: {
           stroke: processServeColor,
           strokeWidth: processQuarantined ? 2 : 2.5,
@@ -237,6 +231,12 @@ export const Dashboard: React.FC = () => {
           onSelectScenario={handleSelectScenario}
         />
 
+        {/* ── Detection Check — fires immediately on bad-data injection ── */}
+        <DetectionCheck
+          event={obs.detectionEvent}
+          onDismiss={obs.dismissDetection}
+        />
+
         {/* ── Lineage Graph Section (Week 1 — preserved) ── */}
         <div className="bg-white/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm dark:shadow-xl backdrop-blur-md flex flex-col gap-3 transition-colors">
 
@@ -271,13 +271,13 @@ export const Dashboard: React.FC = () => {
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               fitView
               fitViewOptions={{ padding: 0.25 }}
               minZoom={0.5}
               maxZoom={1.5}
-              defaultEdgeOptions={{ type: 'smoothstep' }}
               proOptions={{ hideAttribution: true }}
             >
               <Background
@@ -285,6 +285,7 @@ export const Dashboard: React.FC = () => {
                 gap={20}
                 size={1.5}
                 color={isDark ? '#334155' : '#cbd5e1'}
+                style={{ border: 'none', outline: 'none' }}
               />
               <Controls className="!bg-white dark:!bg-slate-900 !border-slate-200 dark:!border-slate-800 !text-slate-700 dark:!text-slate-300 !fill-slate-700 dark:!fill-slate-300" />
               <MiniMap
@@ -295,6 +296,8 @@ export const Dashboard: React.FC = () => {
                   return '#0ea5e9';
                 }}
                 maskColor={isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(241, 245, 249, 0.75)'}
+                position="top-right"
+                style={{ width: 120, height: 80 }}
                 className="!bg-white/90 dark:!bg-slate-900/90 !border-slate-200 dark:!border-slate-800 !rounded-lg overflow-hidden !shadow-md dark:!shadow-lg hidden md:block"
               />
             </ReactFlow>

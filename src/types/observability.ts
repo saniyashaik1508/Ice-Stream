@@ -166,3 +166,28 @@ export interface QuarantineNodeApiRequest {
   nodeId: string;
   reason: string;
 }
+
+// ─── Detection Check event (emitted immediately on bad-data injection) ─────────
+export interface DetectionEvent {
+  /** Which incident scenario caused this */
+  scenario: IncidentScenario;
+  /** Human-readable rule that caught the bad data */
+  ruleName: string;
+  /** The stage where Flink flagged the data */
+  detectedAtStage: 'ingest' | 'process' | 'serve';
+  severity: AlertSeverity;
+  /** The field/column affected (if applicable) */
+  column?: string;
+  expectedValue: string;
+  actualValue: string;
+  threshold: string;
+  /** HH:MM:SS — when bad data was injected at the source */
+  injectedAt: string;
+  /** HH:MM:SS — when Flink flagged the data */
+  detectedAt: string;
+  /** HH:MM:SS — when the alert was raised */
+  alertRaisedAt: string;
+  /** Simulated detection latency in ms */
+  detectionLatencyMs: number;
+}
+

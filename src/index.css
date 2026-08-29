@@ -110,3 +110,15 @@ html.light .react-flow__controls button svg {
   stroke-dasharray: 6;
   animation: flowEdge 0.8s linear infinite !important;
 }
+
+/* Hide default React Flow connection line artifact */
+.react-flow__connectionline {
+  display: none;
+}
+
+/* Remove stray SVG border/line from background layer */
+.react-flow__background {
+  border: none !important;
+  outline: none !important;
+}
+
