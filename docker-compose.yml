@@ -99,32 +99,26 @@ services:
     restart: unless-stopped
 
   # ------------------------------------------------------- Stream processor
-  stream-processor:
-    build:
-      context: .
-      dockerfile: stream_processor/Dockerfile
-    container_name: icestream-stream-processor
-    depends_on:
-      kafka-init:
-        condition: service_completed_successfully
-      minio-init:
-        condition: service_completed_successfully
-      catalog-db:
-        condition: service_healthy
-    environment:
-      <<: *common-env
-      RAW_TOPIC: transactions.raw
-      DLQ_TOPIC: transactions.dlq
-      ALERT_TOPIC: transactions.alerts
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
-      ICEBERG_WAREHOUSE: s3://icestream-warehouse/warehouse
-      CATALOG_URI: postgresql+psycopg2://iceberg:iceberg@catalog-db:5432/iceberg_catalog
-      ERROR_RATE_TRIP_THRESHOLD: "0.02"
-      CIRCUIT_COOLDOWN_SECONDS: "20"
-      BACKEND_EVENTS_URL: http://backend:8000/internal/events
-    restart: unless-stopped
+  # NOTE: stream_processor/ will be added in a future sprint.
+  # stream-processor:
+  #   build:
+  #     context: ./stream_processor
+  #     dockerfile: Dockerfile
+  #   container_name: icestream-stream-processor
+  #   environment:
+  #     <<: *common-env
+  #     RAW_TOPIC: transactions.raw
+  #     DLQ_TOPIC: transactions.dlq
+  #     ALERT_TOPIC: transactions.alerts
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: minioadmin
+  #     S3_SECRET_KEY: minioadmin
+  #     ICEBERG_WAREHOUSE: s3://icestream-warehouse/warehouse
+  #     CATALOG_URI: postgresql+psycopg2://iceberg:iceberg@catalog-db:5432/iceberg_catalog
+  #     ERROR_RATE_TRIP_THRESHOLD: "0.02"
+  #     CIRCUIT_COOLDOWN_SECONDS: "20"
+  #     BACKEND_EVENTS_URL: http://backend:8000/internal/events
+  #   restart: unless-stopped
 
   # -------------------------------------------------------------- Backend
   backend:
