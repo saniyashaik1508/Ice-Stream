@@ -191,3 +191,71 @@ export interface DetectionEvent {
   detectionLatencyMs: number;
 }
 
+// ─── Live Alert — Circuit Breaker WebSocket Types (Day 1 foundation) ──────────
+//
+// These types model the real-time events emitted by the backend over
+// ws://localhost:8000/ws/live  (channel: "circuit_breaker").
+//
+// Backend shape (from kafka_listener.py _watch_alerts):
+//   { "channel": "circuit_breaker", "event": { "type": "circuit_breaker",
+//     "to_state": "open|closed|half_open", "error_rate": 0.07, ... } }
+//
+// Frontend normalises this into CircuitBreakerEvent for clean UI consumption.
+
+/** The three states a circuit breaker can occupy (matches backend to_state values) */
+export type CircuitBreakerStatus = 'OPEN' | 'CLOSED' | 'HALF_OPEN';
+
+/** Which pipeline stage the circuit breaker protects */
+export type CircuitBreakerNodeId = 'ingest' | 'process' | 'serve';
+
+/**
+ * Normalised circuit-breaker event — the canonical message format the React UI
+ * works with. `websocketService.ts` translates raw backend messages into this.
+ */
+export interface CircuitBreakerEvent {
+  /** Discriminator — always "CIRCUIT_BREAKER" on the frontend */
+  type: 'CIRCUIT_BREAKER';
+  /** Which pipeline node is affected */
+  nodeId: CircuitBreakerNodeId;
+  /** Current breaker state */
+  status: CircuitBreakerStatus;
+  /** Derived UI severity — set by the status→severity mapping */
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  /** Human-readable description emitted by the stream processor */
+  message: string;
+  /** ISO-8601 timestamp of the state transition */
+  timestamp: string;
+  /** Rolling error rate that triggered the transition (0–1) */
+  errorRate?: number;
+}
+
+/**
+ * The live-alert state slice for a single node.
+ * Stored per-node in `useWebSocketAlerts`.
+ */
+export interface LiveAlertState {
+  nodeId: CircuitBreakerNodeId;
+  status: CircuitBreakerStatus;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  message: string;
+  timestamp: string;
+  errorRate?: number;
+  /** true while the breaker is not CLOSED */
+  active: boolean;
+}
+
+/**
+ * Full map of live alert states, keyed by nodeId.
+ * A node absent from this map is implicitly CLOSED / healthy.
+ */
+export type LiveAlertMap = Partial<Record<CircuitBreakerNodeId, LiveAlertState>>;
+
+/**
+ * Raw WebSocket message envelope as sent by the backend's `/ws/live` channel.
+ * Used only inside `websocketService.ts` — consumers receive CircuitBreakerEvent.
+ */
+export interface WsEnvelope {
+  channel: 'snapshot' | 'circuit_breaker' | 'alert' | 'dlq' | 'lineage';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+}
