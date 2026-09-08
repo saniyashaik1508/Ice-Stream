@@ -2,6 +2,8 @@ import React from 'react';
 import { PipelineStatus } from '../types/pipeline';
 import { SimulationScenario } from '../hooks/usePipelineSimulation';
 import { useTheme } from '../context/ThemeContext';
+import { WsStatusIndicator } from './WsStatusIndicator';
+import { WsConnectionStatus } from '../services/websocketService';
 import { 
   Activity, 
   Play, 
@@ -13,6 +15,7 @@ import {
   Moon
 } from 'lucide-react';
 
+
 interface PipelineHeaderProps {
   systemStatus: PipelineStatus;
   lastUpdated: string;
@@ -22,6 +25,8 @@ interface PipelineHeaderProps {
   activeScenario: SimulationScenario;
   onSelectScenario: (scenario: SimulationScenario) => void;
   onReset: () => void;
+  /** WebSocket connection status — drives the live indicator dot */
+  wsStatus: WsConnectionStatus;
 }
 
 export const PipelineHeader: React.FC<PipelineHeaderProps> = ({
@@ -33,7 +38,9 @@ export const PipelineHeader: React.FC<PipelineHeaderProps> = ({
   activeScenario,
   onSelectScenario,
   onReset,
+  wsStatus,
 }) => {
+
   const { theme, toggleTheme } = useTheme();
 
   const getOverallStatusBadge = () => {
@@ -105,6 +112,14 @@ export const PipelineHeader: React.FC<PipelineHeaderProps> = ({
             <Activity className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
             <span className="text-slate-400 dark:text-slate-500">Updated:</span>
             <span className="text-slate-800 dark:text-slate-200 font-semibold">{lastUpdated}</span>
+          </div>
+
+          {/* WebSocket live connection indicator */}
+          <div
+            className="text-xs font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700/60 flex items-center gap-1.5 shadow-sm"
+            title={`WebSocket: ${wsStatus}`}
+          >
+            <WsStatusIndicator status={wsStatus} showLabel />
           </div>
 
           {/* Simulation Toggle and Scenario Selector */}

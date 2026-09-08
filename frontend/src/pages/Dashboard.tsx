@@ -45,10 +45,12 @@ import { DetectionCheck } from '../components/DetectionCheck';
 
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
 import { useObservability } from '../hooks/useObservability';
+import { useWebSocketAlerts } from '../hooks/useWebSocketAlerts';
 import { useTheme } from '../context/ThemeContext';
 import { PipelineNodeData } from '../types/pipeline';
 import { IncidentScenario } from '../types/observability';
 import { SimulationScenario } from '../hooks/usePipelineSimulation';
+import { LiveAlertBanner } from '../components/LiveAlertBanner';
 import { Layers } from 'lucide-react';
 
 const nodeTypes = {
@@ -81,6 +83,14 @@ export const Dashboard: React.FC = () => {
   // ── Week 2 observability hook ──────────────────────────────────────────────
   const obs = useObservability();
 
+  // ── Live WebSocket circuit-breaker alerts ──────────────────────────────────
+  const {
+    wsStatus,
+    lastEvent: liveEvent,
+    getLiveStatusForNode,
+    dismissLiveAlert,
+  } = useWebSocketAlerts();
+
   // ── Unified scenario handler: updates both hooks atomically ───────────────
   const handleSelectScenario = useCallback(
     (incidentScenario: IncidentScenario, simSc: SimulationScenario) => {
@@ -102,13 +112,19 @@ export const Dashboard: React.FC = () => {
     [setScenario, obs.applyScenario]
   );
 
-  // ── ReactFlow nodes — mark quarantined nodes from obs state ───────────────
+  // ── ReactFlow nodes — priority: quarantine > live WS alert > sim scenario ─
   const nodes: Node<PipelineNodeData>[] = useMemo(() => {
     return stages.map((stage, idx) => {
       const xPos = 40 + idx * 480;
       const yPos = 80;
 
-      const isQuarantined = obs.quarantinedNodes.includes(stage.id);
+      const isQuarantined   = obs.quarantinedNodes.includes(stage.id);
+      const liveStatus      = getLiveStatusForNode(stage.id);
+
+      // Priority: quarantine (fuchsia) > live WS CRITICAL/WARNING > scenario status
+      const resolvedStatus = isQuarantined
+        ? ('quarantined' as const)
+        : liveStatus ?? stage.status;
 
       return {
         id: stage.id,
@@ -116,13 +132,13 @@ export const Dashboard: React.FC = () => {
         position: { x: xPos, y: yPos },
         data: {
           ...stage,
-          // Override status for quarantined nodes so PipelineNode renders QUARANTINED
-          status: isQuarantined ? ('quarantined' as any) : stage.status,
+          status: resolvedStatus as PipelineNodeData['status'],
         },
         selected: selectedStageId === stage.id,
       };
     });
-  }, [stages, selectedStageId, obs.quarantinedNodes]);
+  }, [stages, selectedStageId, obs.quarantinedNodes, getLiveStatusForNode]);
+
 
   // ── ReactFlow edges — broken edge when PROCESS is quarantined ────────────
   const edges: Edge[] = useMemo(() => {
@@ -203,7 +219,9 @@ export const Dashboard: React.FC = () => {
         activeScenario={simScenario}
         onSelectScenario={handleHeaderScenario}
         onReset={() => { resetStages(); obs.applyScenario('healthy'); }}
+        wsStatus={wsStatus}
       />
+
 
       {/* ── Main Dashboard Body ── */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 flex flex-col gap-6">
@@ -215,7 +233,14 @@ export const Dashboard: React.FC = () => {
           quarantinedNodeCount={obs.quarantinedNodes.length}
         />
 
+        {/* ── Live WebSocket Alert Banner — shows on real circuit-breaker events ── */}
+        <LiveAlertBanner
+          event={liveEvent}
+          onDismiss={() => liveEvent && dismissLiveAlert(liveEvent.nodeId)}
+        />
+
         {/* ── Pipeline Health Banner (Week 2) ── */}
+
         <PipelineHealthBanner
           pipelineState={obs.pipelineState}
           quarantinedNodes={obs.quarantinedNodes}
