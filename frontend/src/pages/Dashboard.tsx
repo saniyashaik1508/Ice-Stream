@@ -89,6 +89,7 @@ export const Dashboard: React.FC = () => {
     lastEvent: liveEvent,
     getLiveStatusForNode,
     dismissLiveAlert,
+    justChangedNodes,
   } = useWebSocketAlerts();
 
   // ── Unified scenario handler: updates both hooks atomically ───────────────
@@ -104,10 +105,8 @@ export const Dashboard: React.FC = () => {
   const handleHeaderScenario = useCallback(
     (scenario: SimulationScenario) => {
       setScenario(scenario);
-      // Map Week 1 scenarios to observability scenarios
       if (scenario === 'healthy') obs.applyScenario('healthy');
       else if (scenario === 'flink-backpressure') obs.applyScenario('high-latency');
-      // Other Week 1 scenarios don't have a direct observability mapping — just run them
     },
     [setScenario, obs.applyScenario]
   );
@@ -118,13 +117,17 @@ export const Dashboard: React.FC = () => {
       const xPos = 40 + idx * 480;
       const yPos = 80;
 
-      const isQuarantined   = obs.quarantinedNodes.includes(stage.id);
-      const liveStatus      = getLiveStatusForNode(stage.id);
+      const isQuarantined = obs.quarantinedNodes.includes(stage.id);
+      const liveStatus    = getLiveStatusForNode(stage.id);
 
       // Priority: quarantine (fuchsia) > live WS CRITICAL/WARNING > scenario status
       const resolvedStatus = isQuarantined
         ? ('quarantined' as const)
         : liveStatus ?? stage.status;
+
+      // liveAlert: true when this node is currently in justChangedNodes
+      // → PipelineNode uses it to play the flash ring animation
+      const liveAlert = justChangedNodes.has(stage.id);
 
       return {
         id: stage.id,
@@ -133,11 +136,14 @@ export const Dashboard: React.FC = () => {
         data: {
           ...stage,
           status: resolvedStatus as PipelineNodeData['status'],
+          liveAlert,
         },
         selected: selectedStageId === stage.id,
       };
     });
-  }, [stages, selectedStageId, obs.quarantinedNodes, getLiveStatusForNode]);
+  }, [stages, selectedStageId, obs.quarantinedNodes, getLiveStatusForNode, justChangedNodes]);
+
+
 
 
   // ── ReactFlow edges — broken edge when PROCESS is quarantined ────────────

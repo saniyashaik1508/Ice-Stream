@@ -1,40 +1,36 @@
 /**
- * IceStream — useWebSocketAlerts Hook  (Day 1 foundation)
+ * IceStream — useWebSocketAlerts Hook  (Day 3: instant node state changes)
  *
- * Manages the live circuit-breaker alert state driven by the WebSocket feed.
- * This hook is the single owner of `liveAlerts` — it is the ONLY place that
- * calls `websocketService.connect()` and `websocketService.disconnect()`.
+ * Owns all live circuit-breaker state driven by the WebSocket feed.
  *
- * State shape:
- *   liveAlerts: LiveAlertMap   — per-node circuit-breaker states
- *   wsStatus:   WsConnectionStatus
- *   lastEvent:  CircuitBreakerEvent | null
+ * Day 3 changes vs Day 1/2:
+ *   - Uses onStatusChange() push feed instead of setWsStatus inside onClose/onError
+ *     callbacks → wsStatus updates in the same microtask as the WS event,
+ *     not a render later.
+ *   - Snapshot handler is now synchronous (no dynamic import).
+ *   - Exposes `justChangedNodes: Set<string>` — nodes that changed state in the
+ *     last 1 second.  PipelineNode uses this to play a flash animation so the
+ *     user sees the state change immediately.
+ *   - handleCircuitBreaker fires setLiveAlerts as a direct state update
+ *     (functional form) so React batches nothing and re-renders in the same frame.
  *
- * Dashboard.tsx feeds `liveAlerts` into the `nodes` useMemo so that only the
- * affected React Flow node changes status — all others are untouched.
- *
- * Architecture (read this before modifying):
- *
+ * Architecture:
  *   kafka_listener.py (_watch_alerts)
  *         │  Kafka: transactions.alerts
  *         ▼
- *   state.py (set_circuit)
- *         │  ws broadcast: { channel: "circuit_breaker", event: { ... } }
+ *   state.py (set_circuit) → websocket_manager.broadcast()
+ *         │  { channel: "circuit_breaker", event: { to_state: "open", ... } }
  *         ▼
- *   websocketService.ts (connect / onCircuitBreaker)
+ *   websocketService.ts  onCircuitBreaker listener
  *         │  CircuitBreakerEvent (normalised, uppercase status)
  *         ▼
  *   useWebSocketAlerts (this hook)
  *         │  liveAlerts: LiveAlertMap
+ *         │  justChangedNodes: Set<string>
  *         ▼
- *   Dashboard.tsx nodes useMemo
- *         │  status override per node
+ *   Dashboard.tsx  nodes useMemo → status override
  *         ▼
- *   PipelineNode (renders CRITICAL / red)
- *
- * Day 2: Wire this hook into Dashboard.tsx.
- * Day 3: Show a live-alert banner/toast when `lastEvent` changes.
- * Day 5: Add reconnection logic in websocketService.ts.
+ *   PipelineNode  → flash animation + new status colour  (instant)
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -49,36 +45,65 @@ import {
   disconnect,
   onCircuitBreaker,
   onSnapshot,
-  onError,
-  onClose,
-  getStatus,
+  onStatusChange,
   WsConnectionStatus,
 } from '../services/websocketService';
-import { CIRCUIT_BREAKER_TO_NODE_STATUS } from '../data/circuitBreakerMapping';
+import {
+  CIRCUIT_BREAKER_TO_NODE_STATUS,
+  normaliseCircuitBreakerState,
+  CIRCUIT_BREAKER_TO_SEVERITY,
+  CIRCUIT_BREAKER_LABELS,
+} from '../data/circuitBreakerMapping';
+
+// How long a node stays in the "just changed" set (flash duration)
+const FLASH_DURATION_MS = 1_200;
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useWebSocketAlerts() {
-  const [liveAlerts, setLiveAlerts] = useState<LiveAlertMap>({});
-  const [wsStatus, setWsStatus]     = useState<WsConnectionStatus>('disconnected');
-  const [lastEvent, setLastEvent]   = useState<CircuitBreakerEvent | null>(null);
-
-  // Snapshot received immediately on connection — carries current circuit state
+  const [liveAlerts,     setLiveAlerts]     = useState<LiveAlertMap>({});
+  const [wsStatus,       setWsStatus]       = useState<WsConnectionStatus>('disconnected');
+  const [lastEvent,      setLastEvent]      = useState<CircuitBreakerEvent | null>(null);
   const [snapshotReceived, setSnapshotReceived] = useState(false);
 
-  // Ref so cleanup callbacks always have the latest setters without re-registering
-  const setLiveAlertsRef = useRef(setLiveAlerts);
-  setLiveAlertsRef.current = setLiveAlerts;
+  /**
+   * Set of nodeIds that changed state in the last FLASH_DURATION_MS.
+   * Triggers the flash animation in PipelineNode.
+   */
+  const [justChangedNodes, setJustChangedNodes] = useState<Set<string>>(new Set());
 
-  // ── Handler: circuit-breaker event ─────────────────────────────────────────
+  // Keep flash-timers so we can clear them on unmount
+  const flashTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // ── Flash helper ─────────────────────────────────────────────────────────────
+  const flashNode = useCallback((nodeId: string) => {
+    // Clear existing timer for this node before starting a new one
+    const existing = flashTimers.current.get(nodeId);
+    if (existing) clearTimeout(existing);
+
+    setJustChangedNodes(prev => new Set([...prev, nodeId]));
+
+    const timer = setTimeout(() => {
+      flashTimers.current.delete(nodeId);
+      setJustChangedNodes(prev => {
+        const next = new Set(prev);
+        next.delete(nodeId);
+        return next;
+      });
+    }, FLASH_DURATION_MS);
+
+    flashTimers.current.set(nodeId, timer);
+  }, []);
+
+  // ── Handler: circuit-breaker event ──────────────────────────────────────────
   const handleCircuitBreaker = useCallback((event: CircuitBreakerEvent) => {
+    // Update lastEvent — triggers LiveAlertBanner
     setLastEvent(event);
 
-    setLiveAlertsRef.current(prev => {
+    // Update liveAlerts map — triggers nodes useMemo in Dashboard
+    setLiveAlerts(prev => {
       const next = { ...prev };
-
       if (event.status === 'CLOSED') {
-        // CLOSED → remove the node from the alert map (returns to healthy)
         delete next[event.nodeId as CircuitBreakerNodeId];
       } else {
         const alertState: LiveAlertState = {
@@ -92,68 +117,62 @@ export function useWebSocketAlerts() {
         };
         next[event.nodeId as CircuitBreakerNodeId] = alertState;
       }
-
       return next;
     });
-  }, []);
 
-  // ── Handler: initial snapshot ───────────────────────────────────────────────
+    // Trigger flash animation on the affected node
+    flashNode(event.nodeId);
+  }, [flashNode]);
+
+  // ── Handler: initial snapshot ────────────────────────────────────────────────
+  // Synchronous — no dynamic import — so it fires in the same call stack as
+  // onopen → snapshot message → _dispatch → this handler.
   const handleSnapshot = useCallback((snapshot: Record<string, unknown>) => {
     setSnapshotReceived(true);
-    setWsStatus('connected');
 
-    // Backend snapshot includes circuit_state: "open" | "closed" | "half_open"
     const rawState = (snapshot['circuit_state'] as string | undefined) ?? 'closed';
+    const status   = normaliseCircuitBreakerState(rawState);
 
-    // Import normaliser locally to avoid circular dep at module level
-    import('../data/circuitBreakerMapping').then(({ normaliseCircuitBreakerState, CIRCUIT_BREAKER_TO_SEVERITY, CIRCUIT_BREAKER_LABELS }) => {
-      const status = normaliseCircuitBreakerState(rawState);
-      if (status !== 'CLOSED') {
-        const syntheticEvent: CircuitBreakerEvent = {
-          type:      'CIRCUIT_BREAKER',
-          nodeId:    'process',
-          status,
-          severity:  CIRCUIT_BREAKER_TO_SEVERITY[status],
-          message:   `[Snapshot] ${CIRCUIT_BREAKER_LABELS[status]}`,
-          timestamp: new Date().toISOString(),
-          errorRate: snapshot['error_rate'] as number | undefined,
-        };
-        handleCircuitBreaker(syntheticEvent);
-      }
-    });
+    if (status !== 'CLOSED') {
+      const syntheticEvent: CircuitBreakerEvent = {
+        type:      'CIRCUIT_BREAKER',
+        nodeId:    'process',
+        status,
+        severity:  CIRCUIT_BREAKER_TO_SEVERITY[status],
+        message:   `[Snapshot] ${CIRCUIT_BREAKER_LABELS[status]}`,
+        timestamp: new Date().toISOString(),
+        errorRate: snapshot['error_rate'] as number | undefined,
+      };
+      handleCircuitBreaker(syntheticEvent);
+    }
   }, [handleCircuitBreaker]);
 
-  // ── WebSocket lifecycle ─────────────────────────────────────────────────────
+  // ── WebSocket lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
-    setWsStatus('connecting');
+    // onStatusChange fires immediately with current status on subscribe,
+    // then on every subsequent change → wsStatus is always in sync.
+    const unsubStatus = onStatusChange(setWsStatus);
+    const unsubCb     = onCircuitBreaker(handleCircuitBreaker);
+    const unsubSnap   = onSnapshot(handleSnapshot);
+
     connect();
 
-    const unsubCb       = onCircuitBreaker(handleCircuitBreaker);
-    const unsubSnap     = onSnapshot(handleSnapshot);
-    const unsubErr      = onError(() => setWsStatus('error'));
-    const unsubClose    = onClose(() => {
-      setWsStatus('disconnected');
-      setSnapshotReceived(false);
-    });
-
-    // Sync status from service on mount (in case connection is fast)
-    setWsStatus(getStatus());
-
     return () => {
+      unsubStatus();
       unsubCb();
       unsubSnap();
-      unsubErr();
-      unsubClose();
       disconnect();
+
+      // Clear all pending flash timers
+      flashTimers.current.forEach(t => clearTimeout(t));
+      flashTimers.current.clear();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // ↑ intentionally empty — connect/disconnect once per component lifecycle
 
-  // ── Derived helper: node status override ───────────────────────────────────
+  // ── Derived: node status override ───────────────────────────────────────────
   /**
-   * Returns the PipelineStatus that should be applied to a given node
-   * based on the current live circuit-breaker state.
-   * Returns `undefined` if no alert is active for that node (no override).
+   * Returns the PipelineStatus to apply to a given node based on live WS state.
+   * Returns undefined if the node has no active circuit-breaker alert.
    */
   const getLiveStatusForNode = useCallback(
     (nodeId: string): 'healthy' | 'warning' | 'error' | 'offline' | undefined => {
@@ -164,7 +183,7 @@ export function useWebSocketAlerts() {
     [liveAlerts]
   );
 
-  // ── Manual dismiss: clear a single node's alert ────────────────────────────
+  // ── Manual dismiss ───────────────────────────────────────────────────────────
   const dismissLiveAlert = useCallback((nodeId: CircuitBreakerNodeId) => {
     setLiveAlerts(prev => {
       const next = { ...prev };
@@ -174,17 +193,19 @@ export function useWebSocketAlerts() {
   }, []);
 
   return {
-    /** Per-node live circuit-breaker states */
+    /** Per-node circuit-breaker states */
     liveAlerts,
-    /** Overall WebSocket connection status */
+    /** Live WebSocket connection status — updates in the same microtask as WS events */
     wsStatus,
-    /** Most recently received circuit-breaker event (for banners / toasts) */
+    /** Most recently received circuit-breaker event */
     lastEvent,
-    /** true once the backend snapshot has been received */
+    /** true once the backend snapshot has been received after connect */
     snapshotReceived,
-    /** Returns the PipelineStatus override for a node, or undefined if healthy */
+    /** Nodes that changed state in the last ~1 s — used to trigger flash animation */
+    justChangedNodes,
+    /** Returns the PipelineStatus override for a node, or undefined if no override */
     getLiveStatusForNode,
-    /** Manually dismiss a live alert for one node */
+    /** Manually dismiss a live alert for one node (does not affect WebSocket state) */
     dismissLiveAlert,
   };
 }

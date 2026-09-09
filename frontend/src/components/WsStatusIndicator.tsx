@@ -33,6 +33,11 @@ const CONFIG: Record<
     pulse: true,
     label: 'Connecting…',
   },
+  reconnecting: {
+    dot: 'bg-amber-500 dark:bg-amber-400',
+    pulse: true,
+    label: 'Reconnecting…',
+  },
   error: {
     dot: 'bg-rose-500 dark:bg-rose-400',
     pulse: false,
@@ -44,6 +49,7 @@ const CONFIG: Record<
     label: 'Offline',
   },
 };
+
 
 export const WsStatusIndicator: React.FC<WsStatusIndicatorProps> = ({
   status,

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { PipelineNodeData, PipelineStatus } from '../types/pipeline';
 import { 
@@ -13,7 +13,9 @@ import {
   MinusCircle,
   Layers,
   ShieldX,
+  Zap,
 } from 'lucide-react';
+
 
 /** Extended status string — supports both Week 1 ('error') and Week 2 ('critical', 'quarantined', 'degraded') */
 type ExtendedStatus = PipelineStatus | 'critical' | 'quarantined' | 'degraded';
@@ -109,11 +111,45 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
   const statusCfg = getStatusConfig(data.status);
   const StageIcon = getStageIcon(data.id);
 
+  /**
+   * liveAlert: true when this node's status was just set by a WebSocket event.
+   * Passed via data.liveAlert — set in Dashboard.tsx nodes useMemo.
+   * Drives the flash ring so the change is immediately noticeable.
+   */
+  const isLive = !!(data as PipelineNodeData & { liveAlert?: boolean }).liveAlert;
+
+  // Flash state — active for FLASH_DURATION_MS then self-clears
+  const [flashing, setFlashing] = useState(false);
+
+  useEffect(() => {
+    if (!isLive) return;
+    setFlashing(true);
+    const t = setTimeout(() => setFlashing(false), 1200);
+    return () => clearTimeout(t);
+  }, [isLive, data.status]); // re-trigger when status changes while isLive
+
+  // Flash ring colour matches the current status
+  const s = data.status as string;
+  const flashRing =
+    s === 'error' || s === 'critical'
+      ? 'ring-rose-500/60 dark:ring-rose-400/50'
+      : s === 'warning'
+      ? 'ring-amber-500/60 dark:ring-amber-400/50'
+      : s === 'healthy'
+      ? 'ring-emerald-500/60 dark:ring-emerald-400/50'
+      : 'ring-fuchsia-500/60 dark:ring-fuchsia-400/50';
+
+
   return (
     <div
-      className={`relative min-w-[270px] max-w-[290px] rounded-xl bg-white dark:bg-slate-900 border p-4 transition-all duration-200 shadow-md dark:shadow-xl ${
-        selected ? statusCfg.selectedBorder : statusCfg.borderColor
-      } ${statusCfg.glowColor}`}
+      className={`
+        relative min-w-[270px] max-w-[290px] rounded-xl bg-white dark:bg-slate-900
+        border p-4 shadow-md dark:shadow-xl
+        transition-all duration-200
+        ${selected ? statusCfg.selectedBorder : statusCfg.borderColor}
+        ${statusCfg.glowColor}
+        ${flashing ? `ring-4 ${flashRing} animate-pulse` : ''}
+      `}
     >
       {/* React Flow Connection Handles */}
       <Handle
@@ -143,11 +179,15 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
           </div>
         </div>
 
-        {/* Status Badge */}
+        {/* Status Badge — shows ⚡ when driven by live WS event */}
         <div
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-mono font-semibold tracking-wide ${statusCfg.bgPill}`}
         >
-          <span className={`inline-block w-2 h-2 rounded-full ${statusCfg.dotColor} animate-pulse`} />
+          {isLive ? (
+            <Zap className="w-3 h-3" />
+          ) : (
+            <span className={`inline-block w-2 h-2 rounded-full ${statusCfg.dotColor} animate-pulse`} />
+          )}
           <span>{statusCfg.label}</span>
         </div>
       </div>
@@ -192,3 +232,4 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
 });
 
 PipelineNode.displayName = 'PipelineNode';
+
