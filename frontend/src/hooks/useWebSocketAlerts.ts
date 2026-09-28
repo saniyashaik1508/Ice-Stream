@@ -13,6 +13,8 @@
  *     user sees the state change immediately.
  *   - handleCircuitBreaker fires setLiveAlerts as a direct state update
  *     (functional form) so React batches nothing and re-renders in the same frame.
+ *   - Snapshot handler reads `circuit_node` for multi-node support (defaults
+ *     to 'process' for backward-compat with existing backend snapshot shape).
  *
  * Architecture:
  *   kafka_listener.py (_watch_alerts)
@@ -31,6 +33,8 @@
  *   Dashboard.tsx  nodes useMemo → status override
  *         ▼
  *   PipelineNode  → flash animation + new status colour  (instant)
+ *         ▼
+ *   Dashboard.tsx  edges useMemo → edge colour override  (instant)
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -61,9 +65,9 @@ const FLASH_DURATION_MS = 1_200;
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useWebSocketAlerts() {
-  const [liveAlerts,     setLiveAlerts]     = useState<LiveAlertMap>({});
-  const [wsStatus,       setWsStatus]       = useState<WsConnectionStatus>('disconnected');
-  const [lastEvent,      setLastEvent]      = useState<CircuitBreakerEvent | null>(null);
+  const [liveAlerts,       setLiveAlerts]       = useState<LiveAlertMap>({});
+  const [wsStatus,         setWsStatus]         = useState<WsConnectionStatus>('disconnected');
+  const [lastEvent,        setLastEvent]        = useState<CircuitBreakerEvent | null>(null);
   const [snapshotReceived, setSnapshotReceived] = useState(false);
 
   /**
@@ -127,6 +131,9 @@ export function useWebSocketAlerts() {
   // ── Handler: initial snapshot ────────────────────────────────────────────────
   // Synchronous — no dynamic import — so it fires in the same call stack as
   // onopen → snapshot message → _dispatch → this handler.
+  //
+  // Day 3: reads `circuit_node` from the snapshot so future backends can send
+  // per-node circuit state; defaults to 'process' for backward-compat.
   const handleSnapshot = useCallback((snapshot: Record<string, unknown>) => {
     setSnapshotReceived(true);
 
@@ -134,9 +141,12 @@ export function useWebSocketAlerts() {
     const status   = normaliseCircuitBreakerState(rawState);
 
     if (status !== 'CLOSED') {
+      // `circuit_node` lets the backend specify which node the breaker guards.
+      // Falls back to 'process' to maintain compatibility with existing backend.
+      const nodeId = (snapshot['circuit_node'] as string | undefined) ?? 'process';
       const syntheticEvent: CircuitBreakerEvent = {
         type:      'CIRCUIT_BREAKER',
-        nodeId:    'process',
+        nodeId:    nodeId as CircuitBreakerEvent['nodeId'],
         status,
         severity:  CIRCUIT_BREAKER_TO_SEVERITY[status],
         message:   `[Snapshot] ${CIRCUIT_BREAKER_LABELS[status]}`,
@@ -193,7 +203,7 @@ export function useWebSocketAlerts() {
   }, []);
 
   return {
-    /** Per-node circuit-breaker states */
+    /** Per-node circuit-breaker states — keyed by nodeId */
     liveAlerts,
     /** Live WebSocket connection status — updates in the same microtask as WS events */
     wsStatus,

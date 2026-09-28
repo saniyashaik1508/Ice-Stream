@@ -130,6 +130,7 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
 
   // Flash ring colour matches the current status
   const s = data.status as string;
+
   const flashRing =
     s === 'error' || s === 'critical'
       ? 'ring-rose-500/60 dark:ring-rose-400/50'
@@ -139,6 +140,17 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
       ? 'ring-emerald-500/60 dark:ring-emerald-400/50'
       : 'ring-fuchsia-500/60 dark:ring-fuchsia-400/50';
 
+  /**
+   * Persistent glow border: while the node is in an error/warning live state
+   * (not just flashing) we keep a subtle coloured shadow on the card so the
+   * degraded state stays visible even after the 1.2 s flash ring fades.
+   */
+  const persistentGlow =
+    (s === 'error' || s === 'critical')
+      ? 'shadow-rose-500/30 dark:shadow-rose-400/20'
+      : s === 'warning'
+      ? 'shadow-amber-500/20 dark:shadow-amber-400/15'
+      : statusCfg.glowColor;
 
   return (
     <div
@@ -147,7 +159,7 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
         border p-4 shadow-md dark:shadow-xl
         transition-all duration-200
         ${selected ? statusCfg.selectedBorder : statusCfg.borderColor}
-        ${statusCfg.glowColor}
+        ${persistentGlow}
         ${flashing ? `ring-4 ${flashRing} animate-pulse` : ''}
       `}
     >
@@ -232,4 +244,3 @@ export const PipelineNode = memo(({ data, selected }: NodeProps<PipelineNodeData
 });
 
 PipelineNode.displayName = 'PipelineNode';
-

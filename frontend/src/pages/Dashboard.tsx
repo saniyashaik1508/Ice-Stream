@@ -1,18 +1,18 @@
 /**
- * IceStream — Main Dashboard (Week 2 — Observability Extension)
+ * IceStream — Main Dashboard (Day 3: Live WebSocket Alerts)
  *
- * Extends the Week 1 React Flow dashboard with:
- *   - IncidentSimulator (5 scenarios)
- *   - PipelineHealthBanner (OPERATIONAL/DEGRADED/QUARANTINED)
- *   - AlertPanel (active + acknowledged alerts)
- *   - AlertDetail modal
- *   - AlertHistory table with filters
- *   - AutomationStatus panel
- *   - Quarantine edge rendering (blocked X on process→serve)
- *   - Extended KPI cards (Critical Alerts + Quarantined Nodes)
+ * Day 3 additions over Week 2:
+ *   - Edge colors react to live WS circuit-breaker status (same priority as nodes)
+ *   - Edge animation stops automatically when adjacent node is in error/warning
+ *   - `liveAlerts` exposed from hook; all three nodes (ingest/process/serve) can
+ *     independently turn red/amber from any circuit-breaker event
+ *   - WsDevPanel (DEV mode only) — fire mock circuit-breaker events directly
+ *     from the UI without opening DevTools
+ *   - `getLiveStatusForNode` added to edges useMemo dependency array
  *
- * All Week 1 content is preserved: React Flow canvas, PipelineHeader,
- * StatusPanel, Legend, PipelineStats cards 1-4.
+ * All Week 1/2 content is preserved: React Flow canvas, PipelineHeader,
+ * StatusPanel, Legend, PipelineStats, IncidentSimulator, AlertPanel,
+ * AlertHistory, AutomationStatus, PipelineHealthBanner, DetectionCheck.
  */
 
 import React, { useMemo, useCallback } from 'react';
@@ -42,6 +42,7 @@ import { AlertHistory } from '../components/AlertHistory';
 import { AutomationStatus } from '../components/AutomationStatus';
 import { PipelineHealthBanner } from '../components/PipelineHealthBanner';
 import { DetectionCheck } from '../components/DetectionCheck';
+import { WsDevPanel } from '../components/WsDevPanel';
 
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
 import { useObservability } from '../hooks/useObservability';
@@ -83,9 +84,13 @@ export const Dashboard: React.FC = () => {
   // ── Week 2 observability hook ──────────────────────────────────────────────
   const obs = useObservability();
 
-  // ── Live WebSocket circuit-breaker alerts ──────────────────────────────────
+  // ── Day 3: Live WebSocket circuit-breaker alerts ───────────────────────────
+  // liveAlerts: map of nodeId → LiveAlertState for every active circuit trip
+  // justChangedNodes: set of nodeIds that just transitioned — triggers flash ring
+  // getLiveStatusForNode: returns the WS-driven status override or undefined
   const {
     wsStatus,
+    liveAlerts,
     lastEvent: liveEvent,
     getLiveStatusForNode,
     dismissLiveAlert,
@@ -144,37 +149,58 @@ export const Dashboard: React.FC = () => {
   }, [stages, selectedStageId, obs.quarantinedNodes, getLiveStatusForNode, justChangedNodes]);
 
 
-
-
-  // ── ReactFlow edges — broken edge when PROCESS is quarantined ────────────
+  // ── ReactFlow edges — live-status-aware color + animation ─────────────────
+  //
+  // Day 3 change: edges now resolve each stage's *effective* status using the
+  // same priority chain as the nodes (quarantine > live WS > sim scenario).
+  // Previously the edge color only reflected simulation stage.status, so a WS
+  // circuit-breaker OPEN event would turn the node red but leave the wire blue.
   const edges: Edge[] = useMemo(() => {
-    const ingestStage = stages.find(s => s.id === 'ingest');
+    const ingestStage  = stages.find(s => s.id === 'ingest');
     const processStage = stages.find(s => s.id === 'process');
-    const serveStage = stages.find(s => s.id === 'serve');
+    const serveStage   = stages.find(s => s.id === 'serve');
     const processQuarantined = obs.quarantinedNodes.includes('process');
 
-    const getEdgeColor = (sourceStatus?: string, targetStatus?: string) => {
-      if (processQuarantined && (sourceStatus === 'process' || targetStatus === 'process'))
-        return isDark ? '#d946ef' : '#a21caf'; // fuchsia for quarantine
-      if (sourceStatus === 'error' || targetStatus === 'error') return isDark ? '#f43f5e' : '#e11d48';
-      if (sourceStatus === 'warning' || targetStatus === 'warning') return isDark ? '#f59e0b' : '#d97706';
-      return isDark ? '#38bdf8' : '#0284c7';
+    // Resolve the effective display status for each stage
+    const resolveEdgeStatus = (stage: typeof ingestStage) => {
+      if (!stage) return 'healthy';
+      if (obs.quarantinedNodes.includes(stage.id)) return 'quarantined';
+      return getLiveStatusForNode(stage.id) ?? stage.status;
     };
 
-    const ingestProcessColor = getEdgeColor(ingestStage?.status, processStage?.status);
-    const processServeColor = processQuarantined
-      ? isDark ? '#f43f5e' : '#e11d48'
-      : getEdgeColor(processStage?.status, serveStage?.status);
+    const ingestStatus  = resolveEdgeStatus(ingestStage);
+    const processStatus = resolveEdgeStatus(processStage);
+    const serveStatus   = resolveEdgeStatus(serveStage);
 
+    const getEdgeColor = (srcStatus: string, tgtStatus: string): string => {
+      if (srcStatus === 'quarantined' || tgtStatus === 'quarantined')
+        return isDark ? '#d946ef' : '#a21caf'; // fuchsia for quarantine
+      if (srcStatus === 'error' || tgtStatus === 'error')
+        return isDark ? '#f43f5e' : '#e11d48';  // red for circuit OPEN / critical
+      if (srcStatus === 'warning' || tgtStatus === 'warning')
+        return isDark ? '#f59e0b' : '#d97706';  // amber for half-open / warning
+      return isDark ? '#38bdf8' : '#0284c7';     // sky-blue for healthy
+    };
 
+    const ingestProcessColor = getEdgeColor(ingestStatus, processStatus);
+    const processServeColor  = processQuarantined
+      ? (isDark ? '#f43f5e' : '#e11d48')
+      : getEdgeColor(processStatus, serveStatus);
 
+    // Stop the animated dash when either endpoint is unhealthy (broken flow)
+    const ingestProcessAnimated =
+      isLive && !processQuarantined &&
+      ingestStatus === 'healthy' && processStatus === 'healthy';
+    const processServeAnimated =
+      isLive && !processQuarantined &&
+      processStatus === 'healthy' && serveStatus === 'healthy';
 
     return [
       {
         id: 'e-ingest-process',
         source: 'ingest',
         target: 'process',
-        animated: isLive && !processQuarantined,
+        animated: ingestProcessAnimated,
         type: 'flowEdge',
         data: {
           label: 'Raw Stream (Avro / JSON)',
@@ -188,7 +214,7 @@ export const Dashboard: React.FC = () => {
         id: 'e-process-serve',
         source: 'process',
         target: 'serve',
-        animated: isLive && !processQuarantined,
+        animated: processServeAnimated,
         type: 'flowEdge',
         data: {
           label: processQuarantined ? 'BLOCKED — Quarantined' : 'Data Quality & Clean Parquet',
@@ -203,7 +229,7 @@ export const Dashboard: React.FC = () => {
         markerEnd: { type: MarkerType.ArrowClosed, color: processServeColor, width: 18, height: 18 },
       },
     ];
-  }, [stages, isLive, isDark, obs.quarantinedNodes]);
+  }, [stages, isLive, isDark, obs.quarantinedNodes, getLiveStatusForNode]);
 
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
     setSelectedStageId(node.id as any);
@@ -268,7 +294,7 @@ export const Dashboard: React.FC = () => {
           onDismiss={obs.dismissDetection}
         />
 
-        {/* ── Lineage Graph Section (Week 1 — preserved) ── */}
+        {/* ── Lineage Graph Section ── */}
         <div className="bg-white/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm dark:shadow-xl backdrop-blur-md flex flex-col gap-3 transition-colors">
 
           {/* Canvas Top Bar */}
@@ -344,6 +370,31 @@ export const Dashboard: React.FC = () => {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
               Sink: Lakehouse Table Storage &amp; Analytics
             </div>
+
+            {/* Live alert overlay — compact chips for each active breaker */}
+            {Object.keys(liveAlerts).length > 0 && (
+              <div className="absolute top-3 right-3 flex flex-col gap-1.5 pointer-events-none mr-[132px]">
+                {(Object.entries(liveAlerts) as [string, NonNullable<typeof liveAlerts[keyof typeof liveAlerts]>][]).map(
+                  ([nodeId, alert]) => (
+                    <div
+                      key={nodeId}
+                      className={`flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border shadow-sm backdrop-blur-sm
+                        ${alert.status === 'OPEN'
+                          ? 'bg-rose-50/90 dark:bg-rose-950/80 border-rose-400/60 dark:border-rose-500/50 text-rose-700 dark:text-rose-300'
+                          : alert.status === 'HALF_OPEN'
+                          ? 'bg-amber-50/90 dark:bg-amber-950/80 border-amber-400/60 dark:border-amber-500/50 text-amber-700 dark:text-amber-300'
+                          : 'bg-emerald-50/90 dark:bg-emerald-950/80 border-emerald-400/60 dark:border-emerald-500/50 text-emerald-700 dark:text-emerald-300'
+                        }`}
+                    >
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full animate-pulse
+                        ${alert.status === 'OPEN' ? 'bg-rose-500' : alert.status === 'HALF_OPEN' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                      />
+                      ⚡ {nodeId.toUpperCase()} {alert.status}
+                    </div>
+                  )
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -380,6 +431,12 @@ export const Dashboard: React.FC = () => {
         {/* ── Status Legend (Week 1 — preserved) ── */}
         <Legend />
 
+        {/* ── DEV-only: WS mock event panel ─────────────────────────────────────
+            Renders only in Vite DEV mode. Lets you test the full circuit-breaker
+            → node-red → edge-red → banner pipeline without a running backend.
+        ── */}
+        {import.meta.env.DEV && <WsDevPanel />}
+
       </main>
 
       {/* ── Alert Detail Modal (Week 2) ── */}
@@ -395,7 +452,7 @@ export const Dashboard: React.FC = () => {
       {/* ── Footer ── */}
       <footer className="border-t border-slate-200 dark:border-slate-800/80 bg-white/60 dark:bg-slate-950/60 py-4 px-4 text-center text-xs font-mono text-slate-500 dark:text-slate-400 mt-auto transition-colors">
         <p>
-          IceStream Real-Time Lakehouse Observability • Member 2 Week 2 — Observability Dashboard
+          IceStream Real-Time Lakehouse Observability • Day 3 — Live Circuit-Breaker Alerts via WebSocket
         </p>
       </footer>
     </div>
