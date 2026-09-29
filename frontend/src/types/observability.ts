@@ -259,3 +259,95 @@ export interface WsEnvelope {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
+
+// ─── Incident Log ─────────────────────────────────────────────────────────────
+//
+// Tracks the full lifecycle of every pipeline pause event:
+//   OPEN → HALF_OPEN → CLOSED
+// with timestamps, error rates, causes, and resolution details.
+
+/** What triggered the incident */
+export type IncidentTrigger =
+  | 'circuit_breaker'   // live WS circuit_breaker event
+  | 'high_null_rate'    // scenario injection
+  | 'schema_drift'
+  | 'low_throughput'
+  | 'high_latency'
+  | 'manual_quarantine'; // user-initiated quarantine
+
+/** Overall status of the incident lifecycle */
+export type IncidentLifecycleStatus =
+  | 'open'       // pipeline is paused / degraded right now
+  | 'recovering' // half-open — probing for recovery
+  | 'resolved';  // circuit closed / pipeline resumed
+
+/**
+ * A single entry in the incident timeline log.
+ * Created when the pipeline transitions to a non-healthy state,
+ * updated on recovery attempts, and closed on CLOSED / healthy.
+ */
+export interface IncidentLogEntry {
+  /** Unique incident ID */
+  id: string;
+
+  /** Which pipeline node was affected */
+  nodeId: CircuitBreakerNodeId | string;
+
+  /** What triggered the incident */
+  trigger: IncidentTrigger;
+
+  /** Human-readable cause explanation */
+  cause: string;
+
+  /** Detailed technical description (rule violated, metric, threshold) */
+  details: string;
+
+  /** ISO-8601 timestamp when the pipeline first paused */
+  pausedAt: string;
+
+  /** ISO-8601 timestamp when recovery started (HALF_OPEN), if any */
+  recoveryStartedAt?: string;
+
+  /** ISO-8601 timestamp when the pipeline fully resumed (CLOSED) */
+  resumedAt?: string;
+
+  /** Rolling error rate at pause time (0–1) */
+  errorRateAtPause?: number;
+
+  /** Rolling error rate at recovery time (0–1) */
+  errorRateAtResume?: number;
+
+  /** Circuit breaker state transitions in order */
+  stateHistory: IncidentStateTransition[];
+
+  /** Current lifecycle status */
+  status: IncidentLifecycleStatus;
+
+  /** Whether the incident was user-dismissed in the UI */
+  dismissed: boolean;
+
+  /** Severity at the time of the incident */
+  severity: 'WARNING' | 'CRITICAL';
+
+  /** Number of DLQ records generated during this incident (if known) */
+  dlqCount?: number;
+}
+
+/** A single state transition recorded inside an incident's history */
+export interface IncidentStateTransition {
+  /** Circuit breaker state after the transition */
+  toState: CircuitBreakerStatus;
+  /** ISO-8601 timestamp of the transition */
+  at: string;
+  /** Error rate at transition time */
+  errorRate?: number;
+  /** Backend message for this transition */
+  message: string;
+}
+
+/** Filter options for the incident log UI */
+export interface IncidentLogFilter {
+  status: IncidentLifecycleStatus | 'all';
+  nodeId: CircuitBreakerNodeId | 'all';
+  trigger: IncidentTrigger | 'all';
+}

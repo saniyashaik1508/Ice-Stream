@@ -43,16 +43,19 @@ import { AutomationStatus } from '../components/AutomationStatus';
 import { PipelineHealthBanner } from '../components/PipelineHealthBanner';
 import { DetectionCheck } from '../components/DetectionCheck';
 import { WsDevPanel } from '../components/WsDevPanel';
+import { IncidentLog } from '../components/IncidentLog';
 
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
 import { useObservability } from '../hooks/useObservability';
 import { useWebSocketAlerts } from '../hooks/useWebSocketAlerts';
+import { useIncidentLog } from '../hooks/useIncidentLog';
 import { useTheme } from '../context/ThemeContext';
 import { PipelineNodeData } from '../types/pipeline';
 import { IncidentScenario } from '../types/observability';
 import { SimulationScenario } from '../hooks/usePipelineSimulation';
 import { LiveAlertBanner } from '../components/LiveAlertBanner';
 import { Layers } from 'lucide-react';
+
 
 const nodeTypes = {
   pipelineNode: PipelineNode,
@@ -97,23 +100,43 @@ export const Dashboard: React.FC = () => {
     justChangedNodes,
   } = useWebSocketAlerts();
 
-  // ── Unified scenario handler: updates both hooks atomically ───────────────
+  // ── Incident log — tracks all pause/resume events from WS + scenarios ────────
+  const incidentLog = useIncidentLog();
+
+  // Forward every live circuit-breaker WS event into the incident log so it
+  // captures real backend events (OPEN → HALF_OPEN → CLOSED) in addition to
+  // simulated scenario injections.
+  React.useEffect(() => {
+    if (liveEvent) {
+      incidentLog.handleCircuitBreakerEvent(liveEvent);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveEvent]);
+
+  // ── ReactFlow nodes — priority: quarantine > live WS alert > sim scenario ─
+
   const handleSelectScenario = useCallback(
     (incidentScenario: IncidentScenario, simSc: SimulationScenario) => {
       setScenario(simSc);
       obs.applyScenario(incidentScenario);
+      incidentLog.applyScenarioIncident(incidentScenario);
     },
-    [setScenario, obs.applyScenario]
+    [setScenario, obs.applyScenario, incidentLog.applyScenarioIncident]
   );
 
   // When the existing header scenario selector changes (Week 1 selector)
   const handleHeaderScenario = useCallback(
     (scenario: SimulationScenario) => {
       setScenario(scenario);
-      if (scenario === 'healthy') obs.applyScenario('healthy');
-      else if (scenario === 'flink-backpressure') obs.applyScenario('high-latency');
+      if (scenario === 'healthy') {
+        obs.applyScenario('healthy');
+        incidentLog.applyScenarioIncident('healthy');
+      } else if (scenario === 'flink-backpressure') {
+        obs.applyScenario('high-latency');
+        incidentLog.applyScenarioIncident('high-latency');
+      }
     },
-    [setScenario, obs.applyScenario]
+    [setScenario, obs.applyScenario, incidentLog.applyScenarioIncident]
   );
 
   // ── ReactFlow nodes — priority: quarantine > live WS alert > sim scenario ─
@@ -250,7 +273,7 @@ export const Dashboard: React.FC = () => {
         onRefresh={manualRefresh}
         activeScenario={simScenario}
         onSelectScenario={handleHeaderScenario}
-        onReset={() => { resetStages(); obs.applyScenario('healthy'); }}
+        onReset={() => { resetStages(); obs.applyScenario('healthy'); incidentLog.applyScenarioIncident('healthy'); }}
         wsStatus={wsStatus}
       />
 
@@ -428,6 +451,16 @@ export const Dashboard: React.FC = () => {
           onViewDetails={obs.setSelectedAlertId}
         />
 
+        {/* ── Incident Log — detailed pipeline pause/resume timeline ── */}
+        <IncidentLog
+          incidents={incidentLog.incidents}
+          openCount={incidentLog.openCount}
+          recoverCount={incidentLog.recoverCount}
+          resolvedCount={incidentLog.resolvedCount}
+          onDismiss={incidentLog.dismissIncident}
+          onClearDismissed={incidentLog.clearDismissed}
+        />
+
         {/* ── Status Legend (Week 1 — preserved) ── */}
         <Legend />
 
@@ -452,9 +485,10 @@ export const Dashboard: React.FC = () => {
       {/* ── Footer ── */}
       <footer className="border-t border-slate-200 dark:border-slate-800/80 bg-white/60 dark:bg-slate-950/60 py-4 px-4 text-center text-xs font-mono text-slate-500 dark:text-slate-400 mt-auto transition-colors">
         <p>
-          IceStream Real-Time Lakehouse Observability • Day 3 — Live Circuit-Breaker Alerts via WebSocket
+          IceStream Real-Time Lakehouse Observability • Week 4 — Detailed Incident Log with Pause/Resume Timeline
         </p>
       </footer>
     </div>
   );
 };
+
