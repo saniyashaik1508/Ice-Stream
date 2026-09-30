@@ -44,11 +44,13 @@ import { PipelineHealthBanner } from '../components/PipelineHealthBanner';
 import { DetectionCheck } from '../components/DetectionCheck';
 import { WsDevPanel } from '../components/WsDevPanel';
 import { IncidentLog } from '../components/IncidentLog';
+import { SelfHealingPanel } from '../components/SelfHealingPanel';
 
 import { usePipelineSimulation } from '../hooks/usePipelineSimulation';
 import { useObservability } from '../hooks/useObservability';
 import { useWebSocketAlerts } from '../hooks/useWebSocketAlerts';
 import { useIncidentLog } from '../hooks/useIncidentLog';
+import { useSelfHealing } from '../hooks/useSelfHealing';
 import { useTheme } from '../context/ThemeContext';
 import { PipelineNodeData } from '../types/pipeline';
 import { IncidentScenario } from '../types/observability';
@@ -113,7 +115,22 @@ export const Dashboard: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveEvent]);
 
-  // ── ReactFlow nodes — priority: quarantine > live WS alert > sim scenario ─
+  // ── Self-Healing engine ─────────────────────────────────────────────────────
+  // Receives live pipeline state and circuit-breaker events; evaluates policies
+  // autonomously and exposes manual trigger actions to the SelfHealingPanel.
+  const healing = useSelfHealing({
+    stages,
+    circuitState: wsStatus === 'connected'
+      ? (Object.values(liveAlerts).some(a => a?.status === 'OPEN') ? 'open'
+         : Object.values(liveAlerts).some(a => a?.status === 'HALF_OPEN') ? 'half_open'
+         : 'closed')
+      : 'closed',
+    errorRate: stages.find(s => s.id === 'process')?.errorRatePct
+      ? (stages.find(s => s.id === 'process')!.errorRatePct! / 100)
+      : (liveEvent?.errorRate ?? 0),
+    activeScenario: obs.activeScenario,
+    liveEvent,
+  });
 
   const handleSelectScenario = useCallback(
     (incidentScenario: IncidentScenario, simSc: SimulationScenario) => {
@@ -461,6 +478,35 @@ export const Dashboard: React.FC = () => {
           onClearDismissed={incidentLog.clearDismissed}
         />
 
+        {/* ── Self-Healing Pipeline Panel ─────────────────────────────────────
+            Proactive data quality engineering: health score, policy engine,
+            DLQ retry queue, schema coercion, backpressure relief, audit log.
+        ── */}
+        <SelfHealingPanel
+          enabled={healing.enabled}
+          mode={healing.mode}
+          actions={healing.actions}
+          policies={healing.policies}
+          healthScore={healing.healthScore}
+          dlqRecords={healing.dlqRecords}
+          lastProbe={healing.lastProbe}
+          totalAutoResolved={healing.totalAutoResolved}
+          totalManualResolved={healing.totalManualResolved}
+          pendingDLQ={healing.pendingDLQ}
+          runningCount={healing.runningCount}
+          onCircuitProbe={healing.manualCircuitProbe}
+          onDLQRetry={healing.manualDLQRetry}
+          onSchemaCoerce={healing.manualSchemaCoerce}
+          onBackpressure={healing.manualBackpressure}
+          onThroughputBoost={healing.manualThroughputBoost}
+          onHealthProbe={healing.manualHealthProbe}
+          onToggleEnabled={healing.toggleEnabled}
+          onSetMode={healing.setHealingMode}
+          onUpdatePolicy={healing.updatePolicy}
+          onDismissDLQ={healing.dismissDLQRecord}
+          onClearSucceeded={healing.clearSucceededActions}
+        />
+
         {/* ── Status Legend (Week 1 — preserved) ── */}
         <Legend />
 
@@ -485,7 +531,7 @@ export const Dashboard: React.FC = () => {
       {/* ── Footer ── */}
       <footer className="border-t border-slate-200 dark:border-slate-800/80 bg-white/60 dark:bg-slate-950/60 py-4 px-4 text-center text-xs font-mono text-slate-500 dark:text-slate-400 mt-auto transition-colors">
         <p>
-          IceStream Real-Time Lakehouse Observability • Week 4 — Detailed Incident Log with Pause/Resume Timeline
+          IceStream Real-Time Lakehouse Observability • Self-Healing Pipeline — Proactive Data Quality Engineering
         </p>
       </footer>
     </div>

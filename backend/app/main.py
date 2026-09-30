@@ -3,7 +3,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import kpi, lineage, rules, incidents, dlq, alerts, timetravel
+from .routers import kpi, lineage, rules, incidents, dlq, alerts, timetravel, healing
 from .services import kafka_listener
 from .websocket_manager import manager
 from .state import state
@@ -17,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (kpi, lineage, rules, incidents, dlq, alerts, timetravel):
+for r in (kpi, lineage, rules, incidents, dlq, alerts, timetravel, healing):
     app.include_router(r.router)
 
 
@@ -25,6 +25,8 @@ for r in (kpi, lineage, rules, incidents, dlq, alerts, timetravel):
 async def on_startup():
     loop = asyncio.get_event_loop()
     kafka_listener.start(loop)
+    # Start the self-healing background policy evaluator
+    healing.start_healing_loop(loop)
 
 
 @app.get("/health")
@@ -36,9 +38,9 @@ def health():
 async def ws_live(websocket: WebSocket):
     """
     Single live channel for the whole dashboard. Messages are tagged by
-    `channel` (lineage | alert | dlq | circuit_breaker); the frontend
-    dispatches on that field. On connect we push a full snapshot so a
-    freshly opened tab isn't blank until the next Kafka event arrives.
+    `channel` (lineage | alert | dlq | circuit_breaker | healing_action);
+    the frontend dispatches on that field. On connect we push a full snapshot
+    so a freshly opened tab isn't blank until the next Kafka event arrives.
     """
     await manager.connect(websocket)
     await websocket.send_json({"channel": "snapshot", "state": state.snapshot()})
@@ -49,3 +51,4 @@ async def ws_live(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
+
